@@ -104,31 +104,66 @@ workflow.add_edge("tools", "agent")
 
 # --- 编译并运行 ---
 # 添加记忆
-app = workflow.compile(checkpointer=memory)
+app = workflow.compile(checkpointer=memory, interrupt_before=["tools"])
 
 config = {"configurable": {"thread_id": "user_001"}}
 
 # 第一次提问
-inputs = {"messages": [("user", "你好，帮我查一下北京的天气。如果打八折是多少")]}
+inputs = {"messages": [("user", "你好，帮我查一下北京的天气。")]}
 for output in app.stream(inputs, config=config):
     # ... (保持原有的打印逻辑)
     pass
 
 # 第二次提问 (测试记忆)
-inputs2 = {"messages": [("user", "那上海的呢？")]} # 注意：这里不需要传历史消息，Agent会自动从 memory 读取
+inputs2 = {"messages": [("user", "那如果温度打八折是多少？")]} # 注意：这里不需要传历史消息，Agent会自动从 memory 读取
 print("\n--- 第二轮对话 ---")
 for output in app.stream(inputs2, config=config):
     # ...
     pass
 
 
-print("--- 开始运行 Agent ---")
-# stream 方法可以让我们看到每一步的执行过程
-for output in app.stream(inputs, config=config):
-    for key, value in output.items():
-        print(f"节点 [{key}] 输出:")
-        # 打印最后一条消息的内容
-        print(value["messages"][-1].content)
-        print("-" * 20)
+# print("--- 开始运行 Agent ---")
+# # stream 方法可以让我们看到每一步的执行过程
+# for output in app.stream(inputs, config=config):
+#     for key, value in output.items():
+#         print(f"节点 [{key}] 输出:")
+#         # 打印最后一条消息的内容
+#         print(value["messages"][-1].content)
+#         print("-" * 20)
+
+# print("\n--- 运行结束 ---")
+
+print("--- 开始运行带人工干预的 Agent ---")
+# 1. 启动对话
+
+inputs = {"messages": [("user", "帮我查一下北京天气，然后计算 100 乘以 8 是多少。")]}
+
+# 使用 stream 运行，它会走到 "tools" 节点前自动暂停
+
+for output in app.stream(inputs, config=config, stream_mode="values"):
+    print(f"当前状态: {output['messages'][-1].content}")
+    print("-" * 20)
+
+# 2. 审查与干预
+
+print("\n--- 程序已暂停，等待人工干预 ---")
+print("当前待执行的工具调用：")
+
+# 获取最新的消息，也就是 LLM 想要调用工具的请求
+
+pending_tool_calls = output['messages'][-1].tool_calls
+print(pending_tool_calls)
+
+# 这里可以加入你的审查逻辑，比如打印出来让用户确认
+
+user_approval = input("\n是否批准执行以上操作？(y/n): ")
+
+if user_approval.lower() == 'y': # 3. 批准后继续
+    print("\n--- 用户已批准，继续执行 ---") # 再次调用 stream，但不传入 inputs，它会从暂停的地方继续
+for output in app.stream(None, config=config, stream_mode="values"):
+    print(f"最终结果: {output['messages'][-1].content}")
+    print("-" * 20)
+else:
+    print("操作已取消。")
 
 print("\n--- 运行结束 ---")
