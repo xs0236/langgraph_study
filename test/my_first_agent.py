@@ -160,9 +160,9 @@ user_approval = input("\n是否批准执行以上操作？(y/n): ")
 
 if user_approval.lower() == 'y': # 3. 批准后继续
     print("\n--- 用户已批准，继续执行 ---") # 再次调用 stream，但不传入 inputs，它会从暂停的地方继续
-for output in app.stream(None, config=config, stream_mode="values"):
-    print(f"最终结果: {output['messages'][-1].content}")
-    print("-" * 20)
+    for output in app.stream(None, config=config, stream_mode="values"):
+        print(f"最终结果: {output['messages'][-1].content}")
+        print("-" * 20)
 else:
     print("操作已取消。")
 
