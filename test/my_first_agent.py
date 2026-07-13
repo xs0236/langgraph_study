@@ -13,6 +13,11 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 
+#引入记忆
+from langgraph.checkpoint.memory import MemorySaver
+# 初始化一个内存存储器
+memory = MemorySaver()
+
 # --- 定义状态 (State) ---
 # 这是 Agent 的"记忆"，add_messages 表示新消息会追加到列表末尾
 class State(TypedDict):
@@ -26,7 +31,25 @@ def get_weather(city: str) -> str:
     print(f"[系统] 正在查询 {city} 的天气...")
     return f"{city} 今天天气晴朗，气温 25 度，适合出游！"
 
-tools = [get_weather]
+# 定义一个新的工具-计算
+@tool
+def calculator(expression: str) -> float:
+    """计算数学表达式的结果，例如 '2 + 2' 或 '15 * 4'"""
+    try:
+        # 注意：在生产环境中 eval 是不安全的，但在本地学习 demo 中可以使用
+        result = eval(expression)
+        return result
+    except Exception as e:
+        return f"计算错误: {e}"
+
+# 更新工具列表
+tools = [get_weather, calculator] 
+
+# 重要：更新模型的绑定
+model = ChatOpenAI(model="glm-4-flash", temperature=0).bind_tools(tools) 
+# 注意：如果你用的是 GLM，确保模型名称是你刚才调试通过的那个
+
+
 
 # --- 定义节点 (Nodes) ---
 # 初始化大模型，并绑定工具
@@ -35,13 +58,23 @@ model = ChatOpenAI(model="glm-4-flash",
       temperature=0,
   ).bind_tools(tools)
 
+# def chatbot(state: State):
+#     
+#     response = model.invoke(state["messages"])
+#     return {"messages": [response]}
 def chatbot(state: State):
-    """
-    Agent 节点：负责思考
-    它接收当前状态，把历史消息发给 LLM，LLM 决定是回答还是调工具
-    """
     response = model.invoke(state["messages"])
+    """
+     Agent 节点：负责思考
+     它接收当前状态，把历史消息发给 LLM，LLM 决定是回答还是调工具
+     """
+
+    # 打印 LLM 的原始决策
+    print(f"[DEBUG] LLM 回复内容: {response.content}")
+    print(f"[DEBUG] LLM 想要调用的工具: {response.tool_calls}")
+
     return {"messages": [response]}
+
 
 # --- 构建图 (Graph) ---
 # 1. 创建图实例
@@ -70,14 +103,28 @@ workflow.add_conditional_edges(
 workflow.add_edge("tools", "agent")
 
 # --- 编译并运行 ---
-app = workflow.compile()
+# 添加记忆
+app = workflow.compile(checkpointer=memory)
 
-# 模拟用户输入
-inputs = {"messages": [("user", "你好，请帮我查一下青岛的天气")]}
+config = {"configurable": {"thread_id": "user_001"}}
+
+# 第一次提问
+inputs = {"messages": [("user", "你好，帮我查一下北京的天气。如果打八折是多少")]}
+for output in app.stream(inputs, config=config):
+    # ... (保持原有的打印逻辑)
+    pass
+
+# 第二次提问 (测试记忆)
+inputs2 = {"messages": [("user", "那上海的呢？")]} # 注意：这里不需要传历史消息，Agent会自动从 memory 读取
+print("\n--- 第二轮对话 ---")
+for output in app.stream(inputs2, config=config):
+    # ...
+    pass
+
 
 print("--- 开始运行 Agent ---")
 # stream 方法可以让我们看到每一步的执行过程
-for output in app.stream(inputs):
+for output in app.stream(inputs, config=config):
     for key, value in output.items():
         print(f"节点 [{key}] 输出:")
         # 打印最后一条消息的内容
