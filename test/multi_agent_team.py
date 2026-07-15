@@ -94,7 +94,7 @@ def supervisor_node(state: TeamState):
     """主管：负责拆解任务并分配给专业 Agent"""
     print("👔 [Supervisor] 正在思考下一步...")
     
-    # 【核心修改】：根据共享状态 state 里的数据来做决策
+    # 根据共享状态 state 里的数据来做决策
     if not state.get("research_notes"):
         # 如果没有调研笔记，就让调研员干活
         next_agent = "researcher"
